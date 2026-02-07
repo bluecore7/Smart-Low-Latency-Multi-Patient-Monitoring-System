@@ -1,0 +1,175 @@
+// =====================================================
+// ESP32 ICU MONITOR (FINAL FINAL)
+// Continuous fever blink + bip bip buzzer + voice
+// =====================================================
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+#define VOICE_PIN  25
+#define BUZZER_PIN 26
+#define LED_PIN    27
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+float bpm, spo2, temp;
+
+int patient = 0;
+
+const unsigned long SWITCH_TIME = 3000;
+
+
+// =====================================================
+void speak()
+{
+  digitalWrite(VOICE_PIN, HIGH);
+  delay(200);
+  digitalWrite(VOICE_PIN, LOW);
+}
+
+
+// =====================================================
+// Bip bip bip pattern
+void cardiacBeepPattern()
+{
+  for(int i=0;i<3;i++)
+  {
+    tone(BUZZER_PIN, 2500);
+    delay(120);
+    noTone(BUZZER_PIN);
+    delay(120);
+  }
+}
+
+
+// =====================================================
+// Continuous fast blinking for whole 3 seconds
+void feverBlinkDuration()
+{
+  unsigned long start = millis();
+
+  while (millis() - start < SWITCH_TIME)
+  {
+    digitalWrite(LED_PIN, HIGH);
+    delay(80);
+    digitalWrite(LED_PIN, LOW);
+    delay(80);
+  }
+}
+
+
+// =====================================================
+void setup()
+{
+  Serial.begin(115200);
+
+  pinMode(VOICE_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+
+  Wire.begin(21,22);
+
+  lcd.init();
+  lcd.backlight();
+
+  randomSeed(millis());
+
+  lcd.print("ICU Monitor");
+  delay(1200);
+
+  lcd.clear();
+}
+
+
+// =====================================================
+void showVitals(String status)
+{
+  lcd.clear();
+
+  lcd.setCursor(0,0);
+  lcd.print("P");
+  lcd.print(patient+1);
+  lcd.print(": ");
+  lcd.print(status);
+
+  lcd.setCursor(0,1);
+  lcd.print("B:");
+  lcd.print((int)bpm);
+  lcd.print(" O2:");
+  lcd.print((int)spo2);
+}
+
+
+// =====================================================
+void loop()
+{
+  String status = "";
+
+  switch(patient)
+  {
+    // ---------- NORMAL ----------
+    case 0:
+      bpm  = random(78, 90);
+      spo2 = random(97, 100);
+      temp = random(240, 251)/10.0;
+
+      status = "NORMAL";
+      showVitals(status);
+      delay(SWITCH_TIME);
+      break;
+
+
+    // ---------- CARD SPIKE ----------
+    case 1:
+      bpm  = random(140, 165);
+      spo2 = random(95, 98);
+      temp = random(240, 251)/10.0;
+
+      status = "CARD SPIKE";
+      showVitals(status);
+
+      cardiacBeepPattern();   // bip bip bip
+      delay(SWITCH_TIME - 720);
+      break;
+
+
+    // ---------- FEVER ----------
+    case 2:
+      bpm  = random(90, 105);
+      spo2 = random(95, 98);
+      temp = random(380, 391)/10.0;
+
+      status = "FEVER";
+      showVitals(status);
+
+      feverBlinkDuration();  // full-time blinking
+      break;
+
+
+    // ---------- LOW OXYGEN ----------
+    case 3:
+      bpm  = random(80, 95);
+      spo2 = random(82, 89);
+      temp = random(240, 251)/10.0;
+
+      status = "OXY LOW";
+      showVitals(status);
+
+      speak();
+      delay(SWITCH_TIME);
+      break;
+  }
+
+
+  // Serial output always
+  Serial.print("Patient ");
+  Serial.print(patient+1);
+  Serial.print(" | BPM:");
+  Serial.print(bpm);
+  Serial.print(" | SpO2:");
+  Serial.print(spo2);
+  Serial.print(" | Temp:");
+  Serial.println(temp);
+
+  patient = (patient + 1) % 4;
+}
