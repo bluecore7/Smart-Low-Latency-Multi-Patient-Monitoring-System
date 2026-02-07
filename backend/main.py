@@ -1,5 +1,11 @@
+from dotenv import load_dotenv
+import os
+
+# Load environment variables FIRST
+load_dotenv()
+
 from fastapi import FastAPI
-from routes.sensor import router
+from backend.routes.sensor import router
 
 app = FastAPI()
 
