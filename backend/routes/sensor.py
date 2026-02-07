@@ -1,7 +1,7 @@
 from fastapi import APIRouter
-from backend.models import SensorData
-from backend.firebase import database
-from backend.logic import determine_status_and_reason
+from models import SensorData
+from firebase import database
+from logic import determine_status_and_reason
 from backend.alerts import create_alert, clear_alert
 import time
 

@@ -1,5 +1,6 @@
 import time
-from backend.firebase import database
+from firebase import database
+
 from typing import Dict, Any
 
 INACTIVE_TIMEOUT = 20  # seconds

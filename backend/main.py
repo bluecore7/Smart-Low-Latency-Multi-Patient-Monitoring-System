@@ -5,7 +5,7 @@ import threading
 load_dotenv()
 
 from fastapi import FastAPI
-from backend.routes.sensor import router
+from routes.sensor import router
 from backend.monitor import check_inactive_devices
 
 app = FastAPI()

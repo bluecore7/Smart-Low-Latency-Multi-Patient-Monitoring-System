@@ -1,5 +1,5 @@
 import time
-from backend.firebase import database
+from firebase import database
 
 def create_alert(bed_id, floor, status, reason):
     alert_ref = database.child(
