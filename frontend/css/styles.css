@@ -1,22 +1,23 @@
-body { font-family: Arial; background: #f5f5f5; }
-.floor { margin-bottom: 20px; }
-.beds { display: flex; gap: 10px; flex-wrap: wrap; }
-
-.bed {
-  width: 120px; height: 80px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 8px; color: #fff; cursor: pointer;
-}
-
-.normal { background: #2ecc71; }
-.warning { background: #f1c40f; color: #000; }
-.critical { background: #e74c3c; }
-.offline { background: #95a5a6; }
-
-.hidden { display: none; }
-
-.modal {
-  position: fixed; top: 30%; left: 50%;
-  transform: translate(-50%, -50%);
-  background: white; padding: 20px; border-radius: 8px;
-}
+.legend {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  
+  .legend .bed {
+    width: auto;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  
+  .bed small {
+    display: block;
+    font-size: 10px;
+    opacity: 0.9;
+  }
+  
+  .modal.critical {
+    border: 3px solid #e74c3c;
+    box-shadow: 0 0 20px red;
+  }
+  

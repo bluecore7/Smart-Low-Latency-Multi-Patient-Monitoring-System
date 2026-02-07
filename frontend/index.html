@@ -7,12 +7,21 @@
 </head>
 
 <body>
-    <h1>Hospital Dashboard</h1>
+    <h1>🏥 Hospital Dashboard</h1>
+
+    <!-- Legend -->
+    <div class="legend">
+        <span class="bed normal">Normal</span>
+        <span class="bed warning">Warning</span>
+        <span class="bed critical">Critical</span>
+        <span class="bed offline">Offline</span>
+    </div>
 
     <div id="floors"></div>
 
+    <!-- Alert Modal -->
     <div id="alertModal" class="hidden">
-        <div class="modal">
+        <div class="modal critical">
             <h2>🚨 Critical Alert</h2>
             <p id="alertText"></p>
             <button onclick="closeAlert()">Acknowledge</button>
@@ -21,6 +30,7 @@
 
     <audio id="alarmSound" src="assets/alarm.mp3" loop></audio>
 
+    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
