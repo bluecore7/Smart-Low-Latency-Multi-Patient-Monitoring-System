@@ -60,6 +60,8 @@ Thumbs.db
 
 # -------- Logs --------
 *.log
-Frontend/firebase.js
+
+frontend/js/firebase.js
 
 firebase_key.json
+firebase.js
