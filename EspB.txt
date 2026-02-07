@@ -1,0 +1,91 @@
+ESP B CODE:
+
+// ===================================================
+// ESP32-B → DISPLAY NODE (Receiver)
+// ===================================================
+
+#include <WiFi.h>
+#include <esp_now.h>
+#include <Wire.h>
+#include <Adafruit_SSD1306.h>
+#include <LiquidCrystal_I2C.h>
+
+#define BUZZER 26
+
+Adafruit_SSD1306 oled(128, 64, &Wire, -1);
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+
+// ===== Same structure as sender =====
+typedef struct {
+  float bpm;
+  float spo2;
+  float temp;
+} SensorData;
+
+SensorData incoming;
+
+
+// ===== Receive callback =====
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  memcpy(&incoming, incomingData, sizeof(incoming));
+}
+
+
+void setup() {
+
+  Serial.begin(115200);
+  delay(1000);
+
+  pinMode(BUZZER, OUTPUT);
+
+  Wire.begin(21,22);
+
+  oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  lcd.init();
+  lcd.backlight();
+
+  WiFi.mode(WIFI_STA);
+
+  esp_now_init();
+  esp_now_register_recv_cb(OnDataRecv);
+
+  Serial.println("Display Node Ready 📺");
+}
+
+
+void loop() {
+
+  // ---------- OLED ----------
+  oled.clearDisplay();
+  oled.setTextSize(1);
+  oled.setCursor(0,0);
+
+  oled.printf("BPM : %.0f\n", incoming.bpm);
+  oled.printf("SpO2: %.0f %%\n", incoming.spo2);
+  oled.printf("Temp: %.1f C\n", incoming.temp);
+
+  oled.display();
+
+
+  // ---------- LCD ----------
+  lcd.setCursor(0,0);
+  lcd.print("B:");
+  lcd.print(incoming.bpm);
+  lcd.print(" O:");
+  lcd.print(incoming.spo2);
+
+  lcd.setCursor(0,1);
+  lcd.print("T:");
+  lcd.print(incoming.temp);
+
+
+  // ---------- Alert rules ----------
+  if (incoming.temp > 38 || incoming.bpm > 110 || incoming.spo2 < 94) {
+    tone(BUZZER, 2000);
+  } else {
+    noTone(BUZZER);
+  }
+
+  delay(200);
+}
