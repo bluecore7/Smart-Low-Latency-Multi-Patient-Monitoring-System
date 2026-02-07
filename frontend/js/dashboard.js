@@ -1,5 +1,5 @@
 const floorsDiv = document.getElementById("floors");
-const STALE_TIMEOUT = 30; // seconds
+const STALE_TIMEOUT = 30; // 30 seconds
 
 db.ref("hospital/floors").on("value", (snapshot) => {
   floorsDiv.innerHTML = "";
@@ -17,8 +17,10 @@ db.ref("hospital/floors").on("value", (snapshot) => {
     Object.entries(floor.beds || {}).forEach(([bedId, bed]) => {
       let status = "offline";
 
-      if (bed.active && bed.vitals) {
-        const age = Date.now() / 1000 - (bed.vitals.timestamp || 0);
+      // Check if the timestamp exists and is fresh
+      if (bed.vitals && bed.vitals.timestamp) {
+        const now = Math.floor(Date.now() / 1000);
+        const age = now - bed.vitals.timestamp;
 
         if (age < STALE_TIMEOUT) {
           status = bed.status || "normal";
@@ -28,13 +30,14 @@ db.ref("hospital/floors").on("value", (snapshot) => {
       const bedEl = document.createElement("div");
       bedEl.className = `bed ${status}`;
       bedEl.innerHTML = `
-        <div>${bedId}</div>
-        <small>${status.toUpperCase()}</small>
-      `;
+                <div style="font-weight:bold; font-size: 1.1rem;">${bedId}</div>
+                <div style="font-size: 0.7rem; margin-top:5px;">${status.toUpperCase()}</div>
+            `;
 
-      bedEl.onclick = () => {
+      // Improved click handler
+      bedEl.addEventListener("click", () => {
         window.location.href = `bed.html?floor=${floorId}&bed=${bedId}`;
-      };
+      });
 
       bedsEl.appendChild(bedEl);
     });
