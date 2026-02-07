@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from models import SensorData
 from firebase import database
 from logic import determine_status_and_reason
-from backend.alerts import create_alert, clear_alert
+from alerts import create_alert, clear_alert
 import time
 
 router = APIRouter()
