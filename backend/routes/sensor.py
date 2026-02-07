@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 from backend.models import SensorData
 from backend.firebase import database
-from backend.logic import determine_status
+from backend.logic import determine_status_and_reason
+from backend.alerts import create_alert, clear_alert
 import time
 
 router = APIRouter()
@@ -9,7 +10,7 @@ router = APIRouter()
 @router.post("/sensor-data")
 def receive_data(data: SensorData):
 
-    status = determine_status(
+    status, reason = determine_status_and_reason(
         data.temperature,
         data.heart_rate,
         data.spo2
@@ -32,7 +33,13 @@ def receive_data(data: SensorData):
         }
     })
 
+    if status == "critical":
+        create_alert(data.device_id, floor, status, reason)
+    else:
+        clear_alert(data.device_id)
+
     return {
         "message": "Data received successfully",
-        "status": status
+        "status": status,
+        "reason": reason
     }
