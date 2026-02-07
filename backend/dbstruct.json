@@ -1,0 +1,62 @@
+{
+  "hospital": {
+    "floors": {
+      "floor1": {
+        "beds": {
+          "F1_BED_01": {
+            "active": false,
+            "status": "offline"
+          },
+          "F1_BED_02": {
+            "active": false,
+            "status": "offline"
+          },
+          "F1_BED_03": {
+            "active": false,
+            "status": "offline"
+          },
+          "F1_BED_04": {
+            "active": false,
+            "status": "offline"
+          },
+          "F1_BED_05": {
+            "active": false,
+            "status": "offline"
+          },
+          "F1_BED_06": {
+            "active": false,
+            "status": "offline"
+          }
+        }
+      },
+      "floor2": {
+        "beds": {
+          "F2_BED_01": {
+            "active": false,
+            "status": "offline"
+          },
+          "F2_BED_02": {
+            "active": false,
+            "status": "offline"
+          },
+          "F2_BED_03": {
+            "active": false,
+            "status": "offline"
+          },
+          "F2_BED_04": {
+            "active": false,
+            "status": "offline"
+          },
+          "F2_ICU_01": {
+            "active": false,
+            "status": "offline"
+          }
+        }
+      }
+    },
+    "alerts": {
+      "active_alerts": {},
+      "history": {}
+    }
+  }
+}
