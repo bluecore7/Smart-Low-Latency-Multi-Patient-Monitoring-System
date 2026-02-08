@@ -1,0 +1,371 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// ================= PINS & HARDWARE =================
+#define VOICE_PIN  25  // Active High (Hypoxia)
+#define BUZZER_PIN 26  // Active High (Cardiac)
+#define LED_PIN    27  // Active High (Fever)
+
+// ================= CONFIGURATION =================
+const char* WIFI_SSID = "VITC-EVENT";
+const char* WIFI_PASS = "Eve@07&08#$";
+const char* SERVER_URL = "https://smart-low-latency-multi-patient.onrender.com/sensor-data";
+
+// ================= TIMING CONSTANTS =================
+const unsigned long SAMPLE_INTERVAL = 250;      // 4Hz vital simulation
+const unsigned long SEND_INTERVAL   = 1000;     // 1s cloud upload
+const unsigned long STATE_UPDATE_INTERVAL = 5000; // 5s scenario shuffle
+const unsigned long LCD_CYCLE_INTERVAL = 2000;    // 2s per alert on screen
+
+// ================= OBJECTS =================
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Verify address 0x27 or 0x3F
+
+// ================= DATA STRUCTURES =================
+struct Bed {
+  const char* id;          // Full ID (e.g., F1_BED_01)
+  char displayId[10];      // Clean ID (e.g., BED 01)
+  
+  // Simulation State
+  int currentScenario;     // 0=Normal, 1=Warning, 2=Critical
+  int pNormal, pWarning, pCritical;
+
+  // Vitals
+  float hr;
+  float spo2;
+  float temp;
+
+  // Status Flags
+  bool isCritical;
+  String alertType;        // "FEVER", "CARDIAC", "HYPOXIA", "NONE"
+
+  // Timers
+  unsigned long lastSample;
+  unsigned long lastSend;
+  unsigned long lastStateUpdate;
+};
+
+// ================= BED CONFIGURATION =================
+Bed beds[] = {
+  {"F1_BED_01", "", 0, 100, 0, 0, 72, 98, 36.6, false, "NONE", 0, 0, 0},
+  {"F1_BED_02", "", 0, 80, 20, 0, 75, 97, 36.8, false, "NONE", 0, 0, 0},
+  {"F1_BED_03", "", 0, 40, 50, 10, 85, 96, 37.0, false, "NONE", 0, 0, 0},
+  {"F2_ICU_01", "", 0, 10, 30, 60, 90, 92, 37.5, false, "NONE", 0, 0, 0}
+};
+const int BED_COUNT = sizeof(beds) / sizeof(Bed);
+
+// ================= GLOBAL VARS =================
+unsigned long lastDisplaySwitch = 0;
+int currentDisplayIndex = 0;
+bool wifiConnected = false;
+
+// Alert non-blocking timers
+unsigned long lastBuzzerToggle = 0;
+bool buzzerState = false;
+unsigned long lastLedToggle = 0;
+bool ledState = false;
+
+// ================= HELPER FUNCTIONS =================
+
+// Cleans "F1_BED_01" -> "BED 01"
+void cleanBedID(Bed &b) {
+  String s = String(b.id);
+  int underscoreIndex = s.indexOf('_');
+  if (underscoreIndex != -1) {
+    s = s.substring(underscoreIndex + 1); // Remove prefix
+  }
+  s.toCharArray(b.displayId, 10);
+}
+
+// ================= SETUP =================
+void setup() {
+  Serial.begin(115200);
+
+  // Init Pins
+  pinMode(VOICE_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+  
+  // Init LCD
+  Wire.begin(21, 22);
+  lcd.init();
+  lcd.backlight();
+  
+  // Pre-process IDs
+  for(int i=0; i<BED_COUNT; i++) cleanBedID(beds[i]);
+
+  // Connect WiFi
+  lcd.setCursor(0,0);
+  lcd.print("Connecting WiFi");
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+  
+  if(WiFi.status() == WL_CONNECTED) {
+    wifiConnected = true;
+    lcd.clear();
+    lcd.print("WiFi Connected");
+    Serial.println("\nConnected!");
+  } else {
+    lcd.clear();
+    lcd.print("WiFi Failed!");
+    Serial.println("\nWiFi Failed - Offline Mode");
+  }
+  delay(1000);
+  lcd.clear();
+}
+
+// ================= MAIN LOOP =================
+void loop() {
+  unsigned long now = millis();
+
+  // WiFi Reconnection Check
+  if (WiFi.status() != WL_CONNECTED && (now % 10000 == 0)) {
+     WiFi.reconnect();
+  }
+
+  // --- 1. SIMULATION & DATA LOGIC ---
+  int criticalCount = 0;
+  
+  for (int i = 0; i < BED_COUNT; i++) {
+    // A. Update Scenario (Probabilities)
+    if (now - beds[i].lastStateUpdate > STATE_UPDATE_INTERVAL) {
+      beds[i].lastStateUpdate = now;
+      updateBedScenario(beds[i]);
+    }
+
+    // B. Update Vitals & Check Alerts
+    if (now - beds[i].lastSample >= SAMPLE_INTERVAL) {
+      beds[i].lastSample = now;
+      simulateVitals(beds[i]);
+      evaluateAlerts(beds[i]);
+    }
+    
+    // Count active criticals for display logic
+    if (beds[i].isCritical) criticalCount++;
+
+    // C. Send to Backend
+    if (now - beds[i].lastSend >= SEND_INTERVAL) {
+      beds[i].lastSend = now;
+      sendData(beds[i]);
+    }
+  }
+
+  // --- 2. HARDWARE ALERT HANDLER (NON-BLOCKING) ---
+  handleHardwareAlerts(beds, BED_COUNT);
+
+  // --- 3. INTELLIGENT LCD DISPLAY ---
+  // Cycle only through critical/warning patients
+  if (now - lastDisplaySwitch > LCD_CYCLE_INTERVAL) {
+    lastDisplaySwitch = now;
+    updateLCD(criticalCount);
+  }
+}
+
+// ================= LOGIC MODULES =================
+
+void evaluateAlerts(Bed &b) {
+  b.isCritical = false;
+  b.alertType = "NONE";
+
+  // 1. CRITICAL: HYPOXIA (Voice)
+  if (b.spo2 < 90) {
+    b.isCritical = true;
+    b.alertType = "HYPOXIA"; // Trigger Voice
+  }
+  // 2. CRITICAL: CARDIAC SPIKE (Buzzer)
+  else if (b.hr >= 140) {
+    b.isCritical = true;
+    b.alertType = "CARDIAC"; // Trigger Buzzer
+  }
+  // 3. CRITICAL: HIGH FEVER (LED)
+  else if (b.temp >= 39.0) {
+    b.isCritical = true;
+    b.alertType = "FEVER";   // Trigger LED
+  }
+  // 4. WARNINGS (Display only, no hardware sound)
+  else if (b.temp >= 38.0 || b.hr > 105 || b.spo2 < 95) {
+    b.isCritical = true; // Treat as critical for LCD visibility
+    b.alertType = "WARNING";
+  }
+}
+
+void handleHardwareAlerts(Bed allBeds[], int count) {
+  bool activeFever = false;
+  bool activeCardiac = false;
+  bool activeHypoxia = false;
+
+  // Check global state
+  for(int i=0; i<count; i++) {
+    if(allBeds[i].alertType == "FEVER") activeFever = true;
+    if(allBeds[i].alertType == "CARDIAC") activeCardiac = true;
+    if(allBeds[i].alertType == "HYPOXIA") activeHypoxia = true;
+  }
+
+  unsigned long now = millis();
+
+  // --- LED LOGIC (Fever) ---
+  if (activeFever) {
+    if (now - lastLedToggle > 100) { // Fast Blink
+      lastLedToggle = now;
+      ledState = !ledState;
+      digitalWrite(LED_PIN, ledState);
+    }
+  } else {
+    digitalWrite(LED_PIN, LOW);
+  }
+
+  // --- BUZZER LOGIC (Cardiac) ---
+  if (activeCardiac) {
+    if (now - lastBuzzerToggle > 200) { // Beep Beep
+      lastBuzzerToggle = now;
+      buzzerState = !buzzerState;
+      if(buzzerState) tone(BUZZER_PIN, 2500);
+      else noTone(BUZZER_PIN);
+    }
+  } else {
+    noTone(BUZZER_PIN);
+  }
+
+  // --- VOICE LOGIC (Hypoxia) ---
+  // Voice module usually needs a single pulse to start playing
+  static unsigned long lastVoiceTrigger = 0;
+  if (activeHypoxia) {
+    if (now - lastVoiceTrigger > 5000) { // Retrigger every 5 sec
+      lastVoiceTrigger = now;
+      digitalWrite(VOICE_PIN, HIGH);
+      // We need a tiny delay for trigger, but since we are non-blocking,
+      // we can't delay(200). 
+      // Ideally, use a separate state variable. For simplicity here:
+      delay(50); 
+      digitalWrite(VOICE_PIN, LOW);
+    }
+  }
+}
+
+void updateLCD(int criticalCount) {
+  if (criticalCount == 0) {
+    // Show System Normal
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("SYSTEM STATUS:");
+    lcd.setCursor(0, 1);
+    lcd.print("ALL PATIENTS OK");
+    return;
+  }
+
+  // Find next critical patient to show
+  int attempts = 0;
+  do {
+    currentDisplayIndex = (currentDisplayIndex + 1) % BED_COUNT;
+    attempts++;
+  } while (!beds[currentDisplayIndex].isCritical && attempts < BED_COUNT);
+
+  // Display the found patient
+  Bed &b = beds[currentDisplayIndex];
+  lcd.clear();
+  
+  // Line 1: ID + Alert Type
+  lcd.setCursor(0, 0);
+  lcd.print(b.displayId); 
+  lcd.print(" ");
+  lcd.print(b.alertType);
+
+  // Line 2: Vitals
+  lcd.setCursor(0, 1);
+  lcd.print("H:"); lcd.print((int)b.hr);
+  lcd.print(" O:"); lcd.print((int)b.spo2);
+  lcd.print(" T:"); lcd.print(b.temp, 1);
+}
+
+// ================= SIMULATION ENGINE =================
+float noise(float amplitude) {
+  return random(-100, 101) * amplitude * 0.01;
+}
+
+void updateBedScenario(Bed &b) {
+  int roll = random(0, 100);
+  if (roll < b.pNormal) b.currentScenario = 0;
+  else if (roll < (b.pNormal + b.pWarning)) b.currentScenario = 1;
+  else b.currentScenario = 2;
+}
+
+void simulateVitals(Bed &b) {
+  float hrDrift = noise(0.8);
+  float spo2Drift = noise(0.3);
+  float tempDrift = noise(0.02);
+
+  switch (b.currentScenario) {
+    case 0: // Normal
+      b.hr   = constrain(b.hr + hrDrift, 65, 85);
+      b.spo2 = constrain(b.spo2 + spo2Drift, 97, 100);
+      b.temp = constrain(b.temp + tempDrift, 36.5, 37.2);
+      break;
+    case 1: // Warning
+      b.hr   = constrain(b.hr + hrDrift * 1.2, 95, 115);
+      b.spo2 = constrain(b.spo2 + spo2Drift, 93, 96);
+      b.temp = constrain(b.temp + tempDrift, 37.5, 38.2);
+      break;
+    case 2: // Critical
+      // Time-based rotation of critical types to ensure we test all hardware
+      int critType = (millis() / 8000) % 3; 
+      
+      if (critType == 0) { // FEVER (LED)
+         b.hr = constrain(b.hr + hrDrift, 100, 120);
+         b.temp = constrain(b.temp + 0.05, 39.0, 41.0); // Force > 39
+         b.spo2 = constrain(b.spo2 + spo2Drift, 95, 98);
+      } 
+      else if (critType == 1) { // CARDIAC (Buzzer)
+         b.hr = constrain(b.hr + noise(3.0), 145, 180); // Force > 140
+         b.temp = constrain(b.temp + tempDrift, 36.0, 37.5);
+         b.spo2 = constrain(b.spo2 + spo2Drift, 93, 97);
+      } 
+      else { // HYPOXIA (Voice)
+         b.hr = constrain(b.hr + hrDrift, 80, 100);
+         b.temp = constrain(b.temp + tempDrift, 36.0, 37.0);
+         b.spo2 = constrain(b.spo2 - 0.1, 70, 88); // Force < 90
+      }
+      break;
+  }
+}
+
+// ================= BACKEND COMMS =================
+void sendData(Bed &b) {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  WiFiClientSecure client;
+  client.setInsecure(); // Skip SSL for speed
+
+  HTTPClient http;
+  http.begin(client, SERVER_URL);
+  http.addHeader("Content-Type", "application/json");
+
+  // Efficient JSON construction
+  StaticJsonDocument<256> doc;
+  doc["device_id"] = b.id;
+  doc["heart_rate"] = (int)b.hr;
+  doc["spo2"] = (int)b.spo2;
+  doc["temperature"] = b.temp;
+  doc["status"] = b.alertType; // Send specific alert type to backend
+
+  String payload;
+  serializeJson(doc, payload);
+
+  int httpResponseCode = http.POST(payload);
+  
+  if (httpResponseCode > 0) {
+    Serial.printf("[%s] Sent. Status: %s. Resp: %d\n", b.displayId, b.alertType.c_str(), httpResponseCode);
+  } else {
+    Serial.printf("[%s] Error sending: %s\n", b.displayId, http.errorToString(httpResponseCode).c_str());
+  }
+  
+  http.end();
+}
