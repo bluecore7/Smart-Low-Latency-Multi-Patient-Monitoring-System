@@ -1,5 +1,18 @@
 const floorsDiv = document.getElementById("floors");
-const STALE_TIMEOUT = 30; // 30 seconds
+const STALE_TIMEOUT = 30;
+
+// Your logic integrated into the frontend display
+function getStatusUI(vitals) {
+  const { temperature: temp, heart_rate: hr, spo2 } = vitals;
+
+  if (spo2 < 90) return { status: "critical", reason: "SpO2 Low" };
+  if (temp > 38.5) return { status: "critical", reason: "High Fever" };
+  if (hr > 120) return { status: "critical", reason: "High HR" };
+  if (temp > 37.5 || hr > 100 || spo2 < 95)
+    return { status: "warning", reason: "Check Vitals" };
+
+  return { status: "normal", reason: "Stable" };
+}
 
 db.ref("hospital/floors").on("value", (snapshot) => {
   floorsDiv.innerHTML = "";
@@ -7,42 +20,42 @@ db.ref("hospital/floors").on("value", (snapshot) => {
   if (!floors) return;
 
   Object.entries(floors).forEach(([floorId, floor]) => {
-    const floorEl = document.createElement("div");
-    floorEl.className = "floor";
-    floorEl.innerHTML = `<h2>${floorId.toUpperCase()}</h2>`;
+    const floorSection = document.createElement("section");
+    floorSection.className = "floor-container";
+    floorSection.innerHTML = `<h3>${floorId.toUpperCase()}</h3>`;
 
-    const bedsEl = document.createElement("div");
-    bedsEl.className = "beds";
+    const grid = document.createElement("div");
+    grid.className = "bed-grid";
 
     Object.entries(floor.beds || {}).forEach(([bedId, bed]) => {
-      let status = "offline";
+      let ui = { status: "offline", reason: "Disconnected" };
+      let vitalDisplay = "--";
 
-      // Check if the timestamp exists and is fresh
       if (bed.vitals && bed.vitals.timestamp) {
-        const now = Math.floor(Date.now() / 1000);
-        const age = now - bed.vitals.timestamp;
-
+        const age = Date.now() / 1000 - bed.vitals.timestamp;
         if (age < STALE_TIMEOUT) {
-          status = bed.status || "normal";
+          ui = getStatusUI(bed.vitals);
+          vitalDisplay = `${bed.vitals.heart_rate} BPM | ${bed.vitals.spo2}%`;
         }
       }
 
-      const bedEl = document.createElement("div");
-      bedEl.className = `bed ${status}`;
-      bedEl.innerHTML = `
-                <div style="font-weight:bold; font-size: 1.1rem;">${bedId}</div>
-                <div style="font-size: 0.7rem; margin-top:5px;">${status.toUpperCase()}</div>
+      const bedCard = document.createElement("div");
+      bedCard.className = `bed-card ${ui.status}`;
+      bedCard.innerHTML = `
+                <div class="bed-header">
+                    <span class="bed-name">${bedId}</span>
+                    <span class="status-dot"></span>
+                </div>
+                <div class="vital-summary">${vitalDisplay}</div>
+                <div class="reason-tag">${ui.reason}</div>
             `;
 
-      // Improved click handler
-      bedEl.addEventListener("click", () => {
-        window.location.href = `bed.html?floor=${floorId}&bed=${bedId}`;
-      });
-
-      bedsEl.appendChild(bedEl);
+      bedCard.onclick = () =>
+        (window.location.href = `bed.html?floor=${floorId}&bed=${bedId}`);
+      grid.appendChild(bedCard);
     });
 
-    floorEl.appendChild(bedsEl);
-    floorsDiv.appendChild(floorEl);
+    floorSection.appendChild(grid);
+    floorsDiv.appendChild(floorSection);
   });
 });
