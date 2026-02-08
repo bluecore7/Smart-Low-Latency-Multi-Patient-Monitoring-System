@@ -5,9 +5,11 @@ const STALE_TIMEOUT = 30;
 function getStatusUI(vitals) {
   const { temperature: temp, heart_rate: hr, spo2 } = vitals;
 
-  if (spo2 < 90) return { status: "critical", reason: "SpO2 Low" };
+  // LOGIC MUST MATCH ALERTS.JS
+  if (spo2 < 90) return { status: "critical", reason: "Hypoxia" };
   if (temp > 38.5) return { status: "critical", reason: "High Fever" };
-  if (hr > 120) return { status: "critical", reason: "High HR" };
+  if (hr > 120) return { status: "critical", reason: "Cardiac Event" };
+
   if (temp > 37.5 || hr > 100 || spo2 < 95)
     return { status: "warning", reason: "Check Vitals" };
 
