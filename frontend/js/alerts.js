@@ -1,35 +1,78 @@
-const modal = document.getElementById("alertModal");
-const alertText = document.getElementById("alertText");
-const alarm = document.getElementById("alarmSound");
+// Create the container dynamically if it doesn't exist
+let toastContainer = document.getElementById("toast-container");
+if (!toastContainer) {
+  toastContainer = document.createElement("div");
+  toastContainer.id = "toast-container";
+  document.body.appendChild(toastContainer);
+}
 
-let alertTimeout = null;
+const alarmSound = document.getElementById("alarmSound");
+let activeAlerts = new Set();
 
 db.ref("hospital/alerts/active_alerts").on("value", (snap) => {
   const alerts = snap.val();
 
+  // clear current list logic handled visually
+  const currentKeys = alerts ? Object.keys(alerts) : [];
+
+  // 1. Remove stale alerts from screen
+  activeAlerts.forEach((key) => {
+    if (!currentKeys.includes(key)) {
+      removeToast(key);
+      activeAlerts.delete(key);
+    }
+  });
+
   if (!alerts) {
-    hideAlert();
+    stopAlarm();
     return;
   }
 
-  const firstKey = Object.keys(alerts)[0];
-  const alert = alerts[firstKey];
+  // 2. Add new alerts
+  let hasCritical = false;
+  Object.entries(alerts).forEach(([key, alert]) => {
+    hasCritical = true;
+    if (!activeAlerts.has(key)) {
+      createToast(key, alert);
+      activeAlerts.add(key);
+    }
+  });
 
-  alertText.innerText = `${alert.bed_id} (${alert.floor}): ${alert.reason}`;
-  modal.classList.remove("hidden");
-
-  alarm.play().catch(() => {});
-
-  clearTimeout(alertTimeout);
-  alertTimeout = setTimeout(hideAlert, 30000);
+  if (hasCritical) playAlarm();
 });
 
-function hideAlert() {
-  modal.classList.add("hidden");
-  alarm.pause();
-  alarm.currentTime = 0;
+function createToast(key, alert) {
+  const toast = document.createElement("div");
+  toast.className = "toast-alert slide-in";
+  toast.id = `toast-${key}`;
+
+  toast.innerHTML = `
+        <div class="toast-icon">🚨</div>
+        <div class="toast-content">
+            <div class="toast-title">${alert.bed_id}</div>
+            <div class="toast-msg">${alert.reason}</div>
+        </div>
+        <button onclick="ackAlert('${key}')" class="toast-close">×</button>
+    `;
+
+  toastContainer.appendChild(toast);
 }
 
-function closeAlert() {
-  hideAlert();
+function removeToast(key) {
+  const el = document.getElementById(`toast-${key}`);
+  if (el) el.remove();
+}
+
+window.ackAlert = function (key) {
+  db.ref(`hospital/alerts/active_alerts/${key}`).remove();
+  removeToast(key);
+};
+
+function playAlarm() {
+  alarmSound.play().catch((e) => console.log("Click to enable audio"));
+}
+
+function stopAlarm() {
+  alarmSound.pause();
+  alarmSound.currentTime = 0;
 }

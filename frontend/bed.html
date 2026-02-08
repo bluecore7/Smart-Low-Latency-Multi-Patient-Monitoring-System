@@ -2,13 +2,59 @@
 <html>
 
 <head>
-    <title>Bed Details</title>
+    <title>Bed Monitoring - Live</title>
     <link rel="stylesheet" href="css/styles.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 
-<body>
-    <h1 id="title"></h1>
-    <div id="details"></div>
+<body class="detail-page">
+    <div class="glass-container">
+        <header class="patient-header">
+            <button onclick="history.back()" class="back-btn"><i class="fas fa-arrow-left"></i> Dashboard</button>
+            <div class="patient-info">
+                <h1 id="bedTitle">Loading...</h1>
+                <span id="floorSub" class="sub-text"></span>
+            </div>
+            <div id="statusBadge" class="badge">Checking...</div>
+        </header>
+
+        <div class="vitals-grid">
+            <div class="vital-card hr">
+                <i class="fas fa-heartbeat"></i>
+                <span class="label">Heart Rate</span>
+                <div class="value-group">
+                    <span id="hrVal" class="value">--</span>
+                    <span class="unit">BPM</span>
+                </div>
+            </div>
+
+            <div class="vital-card spo2">
+                <i class="fas fa-lungs"></i>
+                <span class="label">Oxygen (SpO2)</span>
+                <div class="value-group">
+                    <span id="spo2Val" class="value">--</span>
+                    <span class="unit">%</span>
+                </div>
+            </div>
+
+            <div class="vital-card temp">
+                <i class="fas fa-thermometer-half"></i>
+                <span class="label">Body Temp</span>
+                <div class="value-group">
+                    <span id="tempVal" class="value">--</span>
+                    <span class="unit">°C</span>
+                </div>
+            </div>
+        </div>
+
+        <footer class="monitoring-footer">
+            <div class="last-seen">
+                <i class="far fa-clock"></i>
+                Last received: <span id="lastUpdated">--</span>
+            </div>
+            <div id="connectionStatus" class="connection-pill">Connecting...</div>
+        </footer>
+    </div>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
